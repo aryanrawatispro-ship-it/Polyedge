@@ -38,3 +38,67 @@ fees:
 
 loop_interval_seconds: 60
 database_path: data/favorite_hunter.db
+
+paper:
+  enabled: true
+  starting_bankroll: 10000
+  sizing: fixed              # fixed | kelly
+  fixed_stake_usd: 100
+  kelly_multiplier: 0.10     # fraction of full Kelly when sizing: kelly
+  max_stake_usd: 250
+  min_stake_usd: 5
+  max_open_positions: 50
+  max_exposure_per_event_usd: 500
+  max_total_exposure_pct: 0.60
+  allow_reentry: false
+  record_baseline: true      # blind-favorite observations for comparison
+  baseline_stake_usd: 100
+  settle_interval_seconds: 300
+
+# FAVORITE EDGE SCORE weights (normalised to 100)
+score_weights:
+  probability_edge: 30
+  source_reliability: 20
+  time_remaining: 15
+  liquidity: 15
+  spread: 10
+  event_certainty: 10
+
+scoring:
+  edge_full_marks: 0.10      # edge that earns the full edge component
+
+# Confidence weights (normalised to 100). Confidence is not a probability.
+confidence_weights:
+  model_edge: 18
+  source_quality: 15
+  independent_sources: 10
+  time_remaining: 8
+  event_uncertainty: 15
+  liquidity: 8
+  spread: 6
+  depth: 5
+  rule_clarity: 15
+
+alerts:
+  enabled: false
+  telegram: false            # needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+  discord: false             # needs DISCORD_WEBHOOK_URL
+  min_favorite_edge_score: 65
+  min_confidence: 70
+  realert_edge_improvement: 0.02
+  cooldown_minutes: 60
+
+sources:
+  gamma_url: https://gamma-api.polymarket.com
+  clob_url: https://clob.polymarket.com
+  data_url: https://data-api.polymarket.com
+  binance_url: https://data-api.binance.vision
+  coinbase_url: https://api.exchange.coinbase.com
+  kraken_url: https://api.kraken.com
+  deribit_url: https://www.deribit.com
+  espn_url: https://site.api.espn.com
+  odds_api_url: https://api.the-odds-api.com
+  kalshi_url: https://api.elections.kalshi.com/trade-api/v2
+  request_timeout: 15
+  max_retries: 3
+  manual_evidence_path: manual_evidence.yaml

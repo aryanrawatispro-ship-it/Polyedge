@@ -25,7 +25,7 @@ from typing import Any
 from .config import Settings
 from .http import DataUnavailable, HttpClient
 from .models import FeeSchedule, OrderBook, parse_book, to_float
-from .timeutil import iso, parse_dt, utcnow
+from .timeutil import parse_dt, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -70,8 +70,9 @@ class PolymarketClient:
         """Yield raw Gamma market objects, following pagination."""
         params: dict[str, Any] = {
             "closed": closed,
-            "end_date_min": iso(end_date_min),
-            "end_date_max": iso(end_date_max),
+            # Same encoding as Polymarket's SDK: datetime.isoformat() ("...+00:00").
+            "end_date_min": end_date_min.isoformat() if end_date_min else None,
+            "end_date_max": end_date_max.isoformat() if end_date_max else None,
             "liquidity_num_min": liquidity_num_min or None,
             "volume_num_min": volume_num_min or None,
             "order": order,

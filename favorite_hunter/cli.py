@@ -370,7 +370,7 @@ def cmd_db_stats(settings: Settings, args: argparse.Namespace) -> int:
 def cmd_verify(settings: Settings, args: argparse.Namespace) -> int:
     from .verify import run_verification
 
-    return run_verification(settings, phase=args.phase, sample=args.sample)
+    return run_verification(settings, phase=args.phase, sample=args.sample, send_alert=args.send_alert)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -436,8 +436,9 @@ def build_parser() -> argparse.ArgumentParser:
     stats.set_defaults(func=cmd_db_stats)
 
     verify = sub.add_parser("verify", help="check live Polymarket data and the calculations")
-    verify.add_argument("--phase", type=int, default=1)
+    verify.add_argument("--phase", default="all", help="1-7 or 'all' (default)")
     verify.add_argument("--sample", type=int, default=5)
+    verify.add_argument("--send-alert", action="store_true", help="phase 7: deliver the test alert")
     verify.set_defaults(func=cmd_verify)
     return parser
 
