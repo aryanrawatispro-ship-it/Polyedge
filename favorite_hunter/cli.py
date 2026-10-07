@@ -5,6 +5,8 @@
     favorite-hunter history   stored price history for a market or token
     favorite-hunter trades    paper positions (model picks and baseline observations)
     favorite-hunter settle    settle paper positions whose markets resolved
+    favorite-hunter report    analytics: entry ranges, extreme favorites, calibration...
+    favorite-hunter backtest  historical favorite backtest on resolved markets
     favorite-hunter db-stats  row counts and data-source health
     favorite-hunter verify    live checks against the Polymarket APIs
 """
@@ -225,6 +227,71 @@ def cmd_settle(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def load_bets(settings: Settings, dataset: str, run_id: str | None = None):
+    from .analytics import bets_from_backtest, bets_from_trades
+    from .backtest import load_observations
+    from .database import Database
+
+    db = Database(settings.database_path)
+    if dataset == "backtest":
+        return bets_from_backtest(load_observations(db, run_id))
+    rows = db.query("SELECT * FROM paper_trades WHERE kind=? AND status != 'open'", (dataset,))
+    return bets_from_trades(rows)
+
+
+DATASET_TITLES = {
+    "model": "MODEL PAPER TRADES (bot picks)",
+    "baseline": "BASELINE: blind favorites seen live (not traded)",
+    "backtest": "HISTORICAL BACKTEST: blind favorites at historical prices",
+}
+
+
+def cmd_report(settings: Settings, args: argparse.Namespace) -> int:
+    from .analytics import build_report
+    from .reporting import render_report
+
+    print(PAPER_BANNER)
+    for dataset in (["model", "baseline", "backtest"] if args.dataset == "all" else [args.dataset]):
+        bets = load_bets(settings, dataset, args.run_id)
+        report = build_report(bets, DATASET_TITLES[dataset], min_sample=args.min_sample)
+        if args.json:
+            print(json.dumps(report.to_dict(), indent=2, default=str))
+            continue
+        print()
+        if not bets:
+            print(f"=== {DATASET_TITLES[dataset]} ===\nno settled bets yet")
+            continue
+        print(render_report(report, dimensions=args.by))
+    return 0
+
+
+def cmd_backtest(settings: Settings, args: argparse.Namespace) -> int:
+    from .analytics import bets_from_backtest, build_report
+    from .backtest import BacktestConfig, load_observations, run_backtest
+    from .database import Database
+    from .reporting import render_report
+
+    db = Database(settings.database_path)
+    client = PolymarketClient.from_settings(settings)
+    cfg = BacktestConfig(days=args.days, max_markets=args.markets, min_volume=args.min_volume, slippage=args.slippage)
+    print(PAPER_BANNER)
+    print(f"Backtesting resolved markets from the last {cfg.days} days (min volume ${cfg.min_volume:,.0f}, up to {cfg.max_markets} markets)...")
+    run = run_backtest(client, db, settings, cfg)
+    for key, value in run.summary().items():
+        print(f"  {key}: {value}")
+    if run.errors:
+        print("\nPOLYMARKET DATA UNAVAILABLE - backtest not run")
+        return 2
+    bets = bets_from_backtest(load_observations(db, run.run_id))
+    print()
+    print(render_report(build_report(bets, DATASET_TITLES["backtest"], min_sample=args.min_sample)))
+    print(
+        f"\nCaveats: entries use Polymarket price history plus {cfg.slippage:.3f} assumed slippage (not executable "
+        "asks); flat $100 stake; no depth/capacity; blind favorites by price only, not the probability model."
+    )
+    return 0
+
+
 def cmd_db_stats(settings: Settings, args: argparse.Namespace) -> int:
     from .database import Database
 
@@ -280,6 +347,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     settle = sub.add_parser("settle", help="settle paper positions whose markets resolved")
     settle.set_defaults(func=cmd_settle)
+
+    report = sub.add_parser("report", help="performance analytics")
+    report.add_argument("--dataset", choices=["model", "baseline", "backtest", "all"], default="all")
+    report.add_argument("--by", nargs="*", default=None, help="dimensions to show (default: all)")
+    report.add_argument("--run-id", default=None, help="backtest run id (default: latest)")
+    report.add_argument("--min-sample", type=int, default=30)
+    report.add_argument("--json", action="store_true")
+    report.set_defaults(func=cmd_report)
+
+    backtest = sub.add_parser("backtest", help="historical favorite backtest on resolved markets")
+    backtest.add_argument("--days", type=int, default=30)
+    backtest.add_argument("--markets", type=int, default=500)
+    backtest.add_argument("--min-volume", type=float, default=10_000)
+    backtest.add_argument("--slippage", type=float, default=0.005)
+    backtest.add_argument("--min-sample", type=int, default=30)
+    backtest.set_defaults(func=cmd_backtest)
 
     stats = sub.add_parser("db-stats", help="database row counts and data-source health")
     stats.set_defaults(func=cmd_db_stats)

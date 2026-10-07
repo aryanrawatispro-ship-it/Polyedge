@@ -7,8 +7,9 @@ from favorite_hunter.models import parse_book
 
 
 class FakeClient:
-    def __init__(self, markets, books, fee=None, fail=False, closed_markets=None):
+    def __init__(self, markets, books, fee=None, fail=False, closed_markets=None, histories=None):
         self.markets = markets
+        self.histories = histories or {}
         self.books = books
         self.fee = fee
         self.fail = fail
@@ -36,6 +37,11 @@ class FakeClient:
             raise DataUnavailable("clob", "blocked by network proxy (403 Forbidden)")
         self.requested_tokens = list(token_ids)
         return {t: parse_book(self.books[t]) for t in token_ids if t in self.books}
+
+    def get_price_history(self, token_id, start, end, bucket_seconds=300):
+        if token_id not in self.histories:
+            raise DataUnavailable("data-api", "HTTP 404: no history")
+        return [(ts, p) for ts, p in self.histories[token_id] if start <= ts <= end]
 
     def get_fee_schedule(self, condition_id):
         self.fee_calls += 1
