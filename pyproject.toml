@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "favorite-hunter"
+version = "0.1.0"
+description = "Paper-trading scanner for underpriced high-probability Polymarket favorites"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "respx>=0.21"]
+
+[project.scripts]
+favorite-hunter = "favorite_hunter.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["favorite_hunter*"]
+
+[tool.setuptools.package-data]
+favorite_hunter = ["dashboard/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
