@@ -3,6 +3,8 @@
     favorite-hunter scan      one scan, print favorites in the price band
     favorite-hunter run       continuous loop: scan, store history (and later phases)
     favorite-hunter history   stored price history for a market or token
+    favorite-hunter trades    paper positions (model picks and baseline observations)
+    favorite-hunter settle    settle paper positions whose markets resolved
     favorite-hunter db-stats  row counts and data-source health
     favorite-hunter verify    live checks against the Polymarket APIs
 """
@@ -177,6 +179,52 @@ def cmd_history(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_trades(settings: Settings, args: argparse.Namespace) -> int:
+    from .database import Database
+    from .paper_trader import PaperTrader
+
+    db = Database(settings.database_path)
+    trader = PaperTrader(db, settings)
+    print(PAPER_BANNER)
+    bank = trader.bankroll()
+    print(
+        f"Paper bankroll: start ${bank['starting']:,.2f} | realized PnL ${bank['realized_pnl']:+,.2f} | "
+        f"open cost ${bank['open_cost']:,.2f} | cash ${bank['cash']:,.2f} | equity (marked) ${bank['equity_marked']:,.2f}"
+    )
+    where = "kind=?" if args.kind != "all" else "1=1"
+    params: list[object] = [args.kind] if args.kind != "all" else []
+    if args.status != "all":
+        where += " AND status" + (" = 'open'" if args.status == "open" else " != 'open'")
+    rows = db.query(f"SELECT * FROM paper_trades WHERE {where} ORDER BY opened_at DESC LIMIT ?", [*params, args.limit])
+    table = [
+        [
+            str(r["trade_id"]), r["kind"], r["opened_at"][:16], _truncate(r["question"] or "", 48), r["outcome"],
+            _fmt_price(r["entry_price"]), _fmt_pct(r["est_prob"]),
+            "-" if r["edge"] is None else f"{r['edge'] * 100:+.1f}pt",
+            _fmt_usd(r["amount_invested"]), r["time_bucket"] or "-", r["status"],
+            "-" if r["pnl"] is None else f"{r['pnl']:+,.2f}",
+            _fmt_price(r["last_mark"]),
+        ]
+        for r in rows
+    ]
+    print()
+    print(render_table(table, ["#", "Kind", "Opened", "Market", "Side", "Entry", "EstProb", "Edge", "Cost", "Bucket", "Status", "PnL", "Mark"], {5, 6, 7, 8, 11, 12}))
+    return 0
+
+
+def cmd_settle(settings: Settings, args: argparse.Namespace) -> int:
+    from .database import Database
+    from .paper_trader import PaperTrader
+
+    db = Database(settings.database_path)
+    client = PolymarketClient.from_settings(settings)
+    settled = PaperTrader(db, settings).settle(client)
+    print(f"settled {len(settled)} paper positions")
+    for row in settled:
+        print(f"  #{row['trade_id']} {row['kind']} {_truncate(row['question'] or '', 60)} {row['outcome']}: {row['status']} PnL {row['pnl']:+.2f}")
+    return 0
+
+
 def cmd_db_stats(settings: Settings, args: argparse.Namespace) -> int:
     from .database import Database
 
@@ -223,6 +271,15 @@ def build_parser() -> argparse.ArgumentParser:
     history.add_argument("id")
     history.add_argument("--limit", type=int, default=50)
     history.set_defaults(func=cmd_history)
+
+    trades = sub.add_parser("trades", help="paper positions and PnL")
+    trades.add_argument("--kind", choices=["model", "baseline", "all"], default="model")
+    trades.add_argument("--status", choices=["open", "closed", "all"], default="all")
+    trades.add_argument("--limit", type=int, default=50)
+    trades.set_defaults(func=cmd_trades)
+
+    settle = sub.add_parser("settle", help="settle paper positions whose markets resolved")
+    settle.set_defaults(func=cmd_settle)
 
     stats = sub.add_parser("db-stats", help="database row counts and data-source health")
     stats.set_defaults(func=cmd_db_stats)

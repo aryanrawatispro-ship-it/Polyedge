@@ -88,6 +88,8 @@ class PaperConfig(BaseModel):
     # picks can be compared against blindly buying favorites.
     record_baseline: bool = True
     baseline_stake_usd: float = 100.0
+    # How often open positions are checked for resolution.
+    settle_interval_seconds: float = 300.0
 
 
 class ScoreWeights(BaseModel):
