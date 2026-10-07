@@ -27,7 +27,7 @@ estimated probability − (executable price + taker fee) ≥ minimum edge
 | 7 | Telegram / Discord alerts | ✅ | ✅ | ⏳ |
 | 8 | Real trading | ❌ by design | – | – |
 
-**Why ⏳:** the environment this was built in blocks outbound access to Polymarket and every data provider (HTTP 403 from the egress proxy), so nothing could be tested against live data there. API formats were taken from Polymarket's current official SDK ([`Polymarket/py-sdk`](https://github.com/Polymarket/py-sdk)); everything else is covered by 175 tests with hand-computed expected values. `favorite-hunter verify` runs all seven phases against the real APIs in one command — run it first.
+**Why ⏳:** the environment this was built in blocks outbound access to Polymarket and every data provider (HTTP 403 from the egress proxy), so nothing could be tested against live data there. API formats were taken from Polymarket's current official SDK ([`Polymarket/py-sdk`](https://github.com/Polymarket/py-sdk)); everything else is covered by 179 tests with hand-computed expected values. `favorite-hunter verify` runs all seven phases against the real APIs in one command — run it first.
 
 ---
 
@@ -160,6 +160,6 @@ PAPER TRADE ONLY.
 | `runner.py`, `cli.py`, `verify.py` | scan loop, commands, live verification |
 
 ```bash
-pytest          # 175 tests
+pytest          # 179 tests
 ruff check .    # lint (optional)
 ```

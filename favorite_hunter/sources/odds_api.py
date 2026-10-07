@@ -81,6 +81,7 @@ class OddsApiClient:
         self.http = http
         self.base = settings.sources.odds_api_url.rstrip("/")
         self.api_key = settings.odds_api_key
+        self.cache_seconds = settings.sources.odds_api_cache_seconds
         self.cache = TTLCache()
 
     @property
@@ -105,8 +106,8 @@ class OddsApiClient:
                 raise DataUnavailable("odds-api", "unexpected odds response")
             return [e for e in (_parse_event(item, sport_key, url) for item in data) if e is not None]
 
-        # The free tier has a small monthly quota: cache for 5 minutes.
-        return self.cache.get_or_set(("odds", sport_key), 300.0, fetch, error_ttl=300.0)
+        # Small monthly quota on the free tier: cache per sport (configurable).
+        return self.cache.get_or_set(("odds", sport_key), self.cache_seconds, fetch, error_ttl=300.0)
 
     def find_event(self, league_tag: str, team_a: str, team_b: str | None) -> OddsEvent | None:
         a = normalize_team(team_a)

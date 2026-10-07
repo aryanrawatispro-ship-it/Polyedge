@@ -156,6 +156,10 @@ class SourcesConfig(BaseModel):
             "default": 5.0,
         }
     )
+    # The Odds API free tier allows ~500 requests/month; each sport is fetched
+    # at most once per this many seconds. Stale odds are filtered by
+    # filters.max_source_age_seconds anyway.
+    odds_api_cache_seconds: float = 1800.0
     # Optional file with user-supplied, sourced evidence (polls, vote counts).
     manual_evidence_path: str = "manual_evidence.yaml"
 

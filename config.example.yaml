@@ -101,4 +101,5 @@ sources:
   kalshi_url: https://api.elections.kalshi.com/trade-api/v2
   request_timeout: 15
   max_retries: 3
+  odds_api_cache_seconds: 1800   # free tier ~500 requests/month
   manual_evidence_path: manual_evidence.yaml

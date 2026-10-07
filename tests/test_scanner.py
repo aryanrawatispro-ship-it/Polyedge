@@ -121,3 +121,21 @@ def test_sports_resolution_time_uses_game_start():
     assert "gameStartTime" in source
     plain = parse_market(gamma_market("12"))
     assert estimate_resolution_time(plain) == (plain.end_date, "market endDate")
+
+
+def test_prefilter_uses_quotes_or_outcome_prices():
+    from favorite_hunter.models import parse_market
+
+    scanner = MarketScanner(FakeClient([], {}), make_settings())
+    # Cached quote says 0.55 but outcome prices say 0.90: still checked.
+    raw = gamma_market("20", best_bid=0.54, best_ask=0.55)
+    raw["outcomePrices"] = '["0.90", "0.10"]'
+    assert scanner.prefilter_sides(parse_market(raw)) == [0]
+    # No quotes at all: outcome prices decide.
+    raw = gamma_market("21", best_bid=None, best_ask=None)
+    raw["outcomePrices"] = '["0.07", "0.93"]'
+    assert scanner.prefilter_sides(parse_market(raw)) == [1]
+    # Neither near the band.
+    raw = gamma_market("22", best_bid=0.49, best_ask=0.51)
+    raw["outcomePrices"] = '["0.5", "0.5"]'
+    assert scanner.prefilter_sides(parse_market(raw)) == []

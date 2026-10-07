@@ -247,20 +247,21 @@ class MarketScanner:
         return True
 
     def prefilter_sides(self, market: Market) -> list[int]:
-        """Outcome indexes worth fetching a book for, using Gamma's cached quotes."""
+        """Outcome indexes worth fetching a book for.
+
+        Uses Gamma's cached quotes (first outcome's bid/ask) and the outcome
+        prices; a side qualifies if either is near the band, so a stale or
+        one-sided cache never hides a favorite. The live book decides."""
         cfg = self.settings.scanner
         low, high = cfg.price_min - cfg.prefilter_pad_low, cfg.price_max + cfg.prefilter_pad_high
+        quote_asks: list[float | None] = [
+            market.best_ask,
+            1.0 - market.best_bid if market.best_bid is not None else None,
+        ]
         sides: list[int] = []
-        approx_asks: list[float | None] = [None, None]
-        if market.best_ask is not None:
-            approx_asks[0] = market.best_ask
-        if market.best_bid is not None:
-            approx_asks[1] = 1.0 - market.best_bid
         for index in (0, 1):
-            approx = approx_asks[index]
-            if approx is None:
-                approx = market.outcome_prices[index]
-            if approx is not None and low <= approx <= high:
+            hints = [quote_asks[index], market.outcome_prices[index]]
+            if any(h is not None and low <= h <= high for h in hints):
                 sides.append(index)
         return sides
 
