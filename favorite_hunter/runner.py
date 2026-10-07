@@ -40,6 +40,7 @@ class CycleReport:
     baselines_recorded: int = 0
     marked: int = 0
     settled: list[dict[str, Any]] = field(default_factory=list)
+    alerts: list[dict[str, Any]] = field(default_factory=list)
     extras: dict[str, Any] = field(default_factory=dict)
 
     def summary(self) -> dict[str, Any]:
@@ -54,6 +55,7 @@ class CycleReport:
             "baselines_recorded": self.baselines_recorded,
             "positions_marked": self.marked,
             "positions_settled": len(self.settled),
+            "alerts_sent": sum(1 for a in self.alerts if a.get("ok")),
             **self.extras,
         }
 
@@ -68,6 +70,7 @@ class Runner:
         evaluator: Evaluator | None = None,
         on_cycle: Callable[["CycleReport"], None] | None = None,
         clock: Callable[[], datetime] = utcnow,
+        alerter: Any = None,
     ):
         self.settings = settings
         self.client = client or PolymarketClient.from_settings(settings)
@@ -78,6 +81,7 @@ class Runner:
         self.evaluator = evaluator
         self.on_cycle = on_cycle
         self.clock = clock
+        self.alerter = alerter
         self._last_settle: datetime | None = None
 
     def run_once(self) -> CycleReport:
@@ -93,6 +97,8 @@ class Runner:
                 report.opportunities = self._record_opportunities(scan_id, result.candidates, started)
             self._trade(result.candidates, report, started)
             self._mark_held(result.candidates)
+            if self.alerter is not None:
+                report.alerts = self.alerter.process(result.candidates, started)
             self.db.replace_latest(scan_id, result.candidates, started)
             self._mark(result, report, started)
         self._maybe_settle(report, started)

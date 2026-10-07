@@ -8,6 +8,7 @@
     favorite-hunter report    analytics: entry ranges, extreme favorites, calibration...
     favorite-hunter backtest  historical favorite backtest on resolved markets
     favorite-hunter dashboard dark web dashboard (add --run to scan in the background)
+    favorite-hunter alerts-test  send (or --dry-run print) a labelled test alert
     favorite-hunter db-stats  row counts and data-source health
     favorite-hunter verify    live checks against the Polymarket APIs
 """
@@ -158,10 +159,13 @@ def cmd_scan(settings: Settings, args: argparse.Namespace) -> int:
 def cmd_run(settings: Settings, args: argparse.Namespace) -> int:
     from .runner import Runner
 
+    from .alerts import AlertManager
+    from .database import Database
     from .evaluator import Evaluator
 
     print(PAPER_BANNER)
-    runner = Runner(settings, evaluator=Evaluator.from_settings(settings))
+    db = Database(settings.database_path)
+    runner = Runner(settings, db=db, evaluator=Evaluator.from_settings(settings), alerter=AlertManager.from_settings(settings, db))
     runner.run_forever(interval=args.interval, cycles=args.cycles)
     return 0
 
@@ -312,6 +316,38 @@ def cmd_dashboard(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_alerts_test(settings: Settings, args: argparse.Namespace) -> int:
+    """Send a labelled TEST alert: the best current opportunity, or a SAMPLE layout."""
+    from .alerts import SAMPLE_ALERT, format_alert, senders_from_settings
+    from .database import Database
+
+    db = Database(settings.database_path)
+    rows = [r for r in db.latest_opportunities() if r["status"] in ("TRADE", "HOLDING")]
+    if rows:
+        best = max(rows, key=lambda r: r["ev_per_share"] or 0.0)
+        text = format_alert(best["detail"], header="TEST MESSAGE - re-sending the current best opportunity")
+    else:
+        text = format_alert(SAMPLE_ALERT, header="TEST MESSAGE - SAMPLE values for layout only, not a live opportunity")
+    print(text)
+    if args.dry_run:
+        return 0
+    senders, problems = senders_from_settings(settings)
+    for problem in problems:
+        print(f"! {problem}")
+    if not senders:
+        print("No alert channel configured (set alerts.telegram/discord in config.yaml and the env secrets).")
+        return 1
+    status = 0
+    for sender in senders:
+        try:
+            sender.send(text)
+            print(f"sent via {sender.name}")
+        except Exception as exc:
+            print(f"{sender.name} failed: {exc}")
+            status = 1
+    return status
+
+
 def cmd_db_stats(settings: Settings, args: argparse.Namespace) -> int:
     from .database import Database
 
@@ -391,6 +427,10 @@ def build_parser() -> argparse.ArgumentParser:
     dash.add_argument("--port", type=int, default=8050)
     dash.add_argument("--run", action="store_true", help="also run the scan loop in the background")
     dash.set_defaults(func=cmd_dashboard)
+
+    alerts = sub.add_parser("alerts-test", help="send a labelled test alert to the configured channels")
+    alerts.add_argument("--dry-run", action="store_true", help="print the message without sending")
+    alerts.set_defaults(func=cmd_alerts_test)
 
     stats = sub.add_parser("db-stats", help="database row counts and data-source health")
     stats.set_defaults(func=cmd_db_stats)
