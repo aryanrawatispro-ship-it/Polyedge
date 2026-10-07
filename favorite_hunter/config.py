@@ -103,6 +103,11 @@ class ScoreWeights(BaseModel):
     event_certainty: float = 10
 
 
+class ScoringConfig(BaseModel):
+    # Probability edge (after fees) that earns the full edge component.
+    edge_full_marks: float = 0.10
+
+
 class ConfidenceWeights(BaseModel):
     """Confidence score weights (normalised to 100 at runtime)."""
 
@@ -161,6 +166,7 @@ class Settings(BaseModel):
     fees: FeeConfig = Field(default_factory=FeeConfig)
     paper: PaperConfig = Field(default_factory=PaperConfig)
     score_weights: ScoreWeights = Field(default_factory=ScoreWeights)
+    scoring: ScoringConfig = Field(default_factory=ScoringConfig)
     confidence_weights: ConfidenceWeights = Field(default_factory=ConfidenceWeights)
     alerts: AlertConfig = Field(default_factory=AlertConfig)
     sources: SourcesConfig = Field(default_factory=SourcesConfig)

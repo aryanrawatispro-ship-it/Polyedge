@@ -22,6 +22,7 @@ from .timeutil import iso, utcnow
 log = logging.getLogger(__name__)
 
 STATUS_TRADE = "TRADE"
+STATUS_HOLDING = "HOLDING"
 
 # evaluate(candidates, now) fills estimate/edge/confidence/score/status in place
 Evaluator = Callable[[list[FavoriteCandidate], datetime], None]
@@ -84,15 +85,18 @@ class Runner:
         scan_id = self.db.start_scan(started)
         result = self.scanner.scan(now=started)
         report = CycleReport(scan_id=scan_id, started_at=started, scan=result)
-        self.db.record_source("polymarket", result.data_available, "; ".join(result.errors) or None)
+        self.db.record_source("polymarket scan", result.data_available, "; ".join(result.errors) or None)
         if result.data_available:
             self._persist(scan_id, result, report)
             if self.evaluator is not None:
                 self.evaluator(result.candidates, started)
                 report.opportunities = self._record_opportunities(scan_id, result.candidates, started)
             self._trade(result.candidates, report, started)
+            self._mark_held(result.candidates)
+            self.db.replace_latest(scan_id, result.candidates, started)
             self._mark(result, report, started)
         self._maybe_settle(report, started)
+        self._flush_source_health()
         self.db.finish_scan(
             scan_id, result.summary(), opportunities=report.opportunities, trades_opened=len(report.trades_opened)
         )
@@ -125,6 +129,23 @@ class Runner:
         for candidate in candidates:
             if self.trader.record_baseline(candidate, now) is not None:
                 report.baselines_recorded += 1
+
+    def _flush_source_health(self) -> None:
+        clients = [getattr(self.client, "http", None)]
+        engine = getattr(self.evaluator, "engine", None)
+        clients.append(getattr(engine, "http", None))
+        for http in clients:
+            if http is None or not hasattr(http, "drain_health"):
+                continue
+            for source, health in http.drain_health().items():
+                self.db.record_source_health(source, health)
+
+    def _mark_held(self, candidates: list[FavoriteCandidate]) -> None:
+        """Flag candidates already held as a paper position (shown as HOLDING)."""
+        held = {row["key"] for row in self.trader.open_trades(kind="model")}
+        for candidate in candidates:
+            if candidate.key in held and candidate.status == STATUS_TRADE:
+                candidate.status = STATUS_HOLDING
 
     def _mark(self, result: ScanResult, report: CycleReport, now: datetime) -> None:
         books = dict(result.books)

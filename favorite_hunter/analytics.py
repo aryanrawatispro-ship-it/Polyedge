@@ -224,7 +224,7 @@ def summarize(bets: list[Bet], group: str = "all", *, min_sample: int = MIN_SAMP
         total_pnl=pnl,
         roi=roi,
         max_drawdown=max_drawdown([b.pnl for b in ordered]),
-        largest_loss=min((b.pnl for b in bets), default=0.0),
+        largest_loss=min((b.pnl for b in bets if b.pnl < 0), default=0.0),
         longest_losing_streak=longest_losing_streak(ordered),
         avg_win=sum(win_pnls) / len(win_pnls) if win_pnls else None,
         avg_loss=sum(loss_pnls) / len(loss_pnls) if loss_pnls else None,

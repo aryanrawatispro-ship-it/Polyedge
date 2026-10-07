@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 from .base import CONFLICT, DATA_UNAVAILABLE, OK, ProbabilityEstimate
 
@@ -32,12 +33,11 @@ def combine_estimates(
         return est
     if len(available) == 1:
         only = available[0]
-        if len(estimates) > 1:
-            only.components = estimates
-            for e in estimates:
-                if e is not only and e.reason:
-                    only.calculation.append(f"[{e.engine}: {e.method}] DATA UNAVAILABLE - {e.reason}")
-        return only
+        if len(estimates) == 1:
+            return only
+        # A new object, so the result never lists itself as its own component.
+        notes = [f"[{e.engine}: {e.method}] {e.data_status} - {e.reason}" for e in estimates if e is not only and e.reason]
+        return replace(only, components=list(estimates), calculation=[*only.calculation, *notes])
 
     probs = [e.probability for e in available]  # type: ignore[misc]
     spread = max(probs) - min(probs)  # type: ignore[type-var, operator]

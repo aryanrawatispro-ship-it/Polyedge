@@ -7,6 +7,7 @@
     favorite-hunter settle    settle paper positions whose markets resolved
     favorite-hunter report    analytics: entry ranges, extreme favorites, calibration...
     favorite-hunter backtest  historical favorite backtest on resolved markets
+    favorite-hunter dashboard dark web dashboard (add --run to scan in the background)
     favorite-hunter db-stats  row counts and data-source health
     favorite-hunter verify    live checks against the Polymarket APIs
 """
@@ -302,6 +303,15 @@ def cmd_backtest(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dashboard(settings: Settings, args: argparse.Namespace) -> int:
+    from .dashboard.app import run_dashboard
+
+    print(PAPER_BANNER)
+    print(f"Dashboard on http://{args.host}:{args.port}" + (" (scan loop running in the background)" if args.run else ""))
+    run_dashboard(settings, host=args.host, port=args.port, with_runner=args.run)
+    return 0
+
+
 def cmd_db_stats(settings: Settings, args: argparse.Namespace) -> int:
     from .database import Database
 
@@ -375,6 +385,12 @@ def build_parser() -> argparse.ArgumentParser:
     backtest.add_argument("--slippage", type=float, default=0.005)
     backtest.add_argument("--min-sample", type=int, default=30)
     backtest.set_defaults(func=cmd_backtest)
+
+    dash = sub.add_parser("dashboard", help="dark web dashboard")
+    dash.add_argument("--host", default="127.0.0.1")
+    dash.add_argument("--port", type=int, default=8050)
+    dash.add_argument("--run", action="store_true", help="also run the scan loop in the background")
+    dash.set_defaults(func=cmd_dashboard)
 
     stats = sub.add_parser("db-stats", help="database row counts and data-source health")
     stats.set_defaults(func=cmd_db_stats)

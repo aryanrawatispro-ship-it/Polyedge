@@ -149,6 +149,9 @@ def test_sportsbook_consensus_and_conflict():
     event = OddsEvent("basketball_nba", "Los Angeles Lakers", "Boston Celtics", NOW, books, "https://odds.example")
     est = SportsEngine(FakeEspn(None, "no match"), FakeOdds(event)).estimate(c, NOW)
     assert est.available and est.probability == pytest.approx(0.93)  # Pinnacle preferred
+    assert all(component is not est for component in est.components)
+    serialized = est.to_dict()  # regression: must not recurse into itself
+    assert serialized["components"][0]["data_status"] == "DATA UNAVAILABLE"
     assert est.opportunity_type == EXTERNAL_ODDS_EDGE
     # live model says ~0.9999 while books say 0.93: conflict beyond 5 points
     g = game("nba", "Lakers", "Celtics", 110, 100, period=4, clock=120.0)

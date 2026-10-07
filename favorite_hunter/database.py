@@ -198,6 +198,18 @@ CREATE TABLE IF NOT EXISTS paper_trades (
 CREATE INDEX IF NOT EXISTS idx_trades_status ON paper_trades(kind, status);
 CREATE INDEX IF NOT EXISTS idx_trades_key ON paper_trades(key, kind);
 
+CREATE TABLE IF NOT EXISTS latest_opportunities (
+    key TEXT PRIMARY KEY,
+    scan_id INTEGER,
+    ts TEXT,
+    status TEXT,
+    category TEXT,
+    ev_per_share REAL,
+    score REAL,
+    confidence REAL,
+    detail_json TEXT
+);
+
 CREATE TABLE IF NOT EXISTS alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT,
@@ -474,6 +486,42 @@ class Database:
         row["asks"] = json.loads(row["asks"])
         return row
 
+    # ------------------------------------------------------ latest snapshot
+
+    def replace_latest(self, scan_id: int, candidates: Iterable[Any], now: datetime) -> int:
+        """Replace the dashboard's current view with this scan's candidates."""
+        rows = []
+        for c in candidates:
+            rows.append(
+                (
+                    c.key, scan_id, iso(now), c.status, c.category,
+                    c.edge.ev_per_share if c.edge else None,
+                    getattr(c.score, "value", None), getattr(c.confidence, "value", None),
+                    json.dumps(c.to_dict(), default=str),
+                )
+            )
+        with self.transaction() as conn:
+            conn.execute("DELETE FROM latest_opportunities")
+            conn.executemany(
+                "INSERT INTO latest_opportunities (key, scan_id, ts, status, category, ev_per_share, score, confidence, detail_json) VALUES (?,?,?,?,?,?,?,?,?)",
+                rows,
+            )
+        return len(rows)
+
+    def latest_opportunities(self) -> list[dict[str, Any]]:
+        rows = self.query("SELECT * FROM latest_opportunities")
+        for row in rows:
+            row["detail"] = json.loads(row.pop("detail_json") or "{}")
+        return rows
+
+    def latest_opportunity(self, key: str) -> dict[str, Any] | None:
+        rows = self.query("SELECT * FROM latest_opportunities WHERE key=?", (key,))
+        if not rows:
+            return None
+        row = rows[0]
+        row["detail"] = json.loads(row.pop("detail_json") or "{}")
+        return row
+
     # ---------------------------------------------------------- source health
 
     def record_source(self, source: str, ok: bool, error: str | None = None, now: datetime | None = None) -> None:
@@ -496,8 +544,31 @@ class Database:
                 (source, error, stamp),
             )
 
+    def record_source_health(self, source: str, health: Any) -> None:
+        """Merge an HttpClient SourceHealth delta into source_status."""
+        self.execute(
+            """
+            INSERT INTO source_status(source, last_ok, last_error, last_error_ts, ok_count, error_count)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source) DO UPDATE SET
+                last_ok=COALESCE(excluded.last_ok, source_status.last_ok),
+                last_error=COALESCE(excluded.last_error, source_status.last_error),
+                last_error_ts=COALESCE(excluded.last_error_ts, source_status.last_error_ts),
+                ok_count=source_status.ok_count + excluded.ok_count,
+                error_count=source_status.error_count + excluded.error_count
+            """,
+            (source, iso(health.last_ok), health.last_error, iso(health.last_error_at), health.ok, health.errors),
+        )
+
     def source_status(self) -> list[dict[str, Any]]:
         return self.query("SELECT * FROM source_status ORDER BY source")
+
+    def meta(self, key: str) -> str | None:
+        rows = self.query("SELECT value FROM meta WHERE key=?", (key,))
+        return rows[0]["value"] if rows else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        self.execute("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
     def stats(self) -> dict[str, int]:
         tables = ["markets", "scans", "price_snapshots", "orderbook_snapshots", "opportunities", "paper_trades", "alerts"]

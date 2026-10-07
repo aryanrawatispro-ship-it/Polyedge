@@ -36,9 +36,10 @@ class Engine(Protocol):
 
 
 class ProbabilityEngine:
-    def __init__(self, settings: Settings, engines: list[Engine]):
+    def __init__(self, settings: Settings, engines: list[Engine], http: HttpClient | None = None):
         self.settings = settings
         self.engines = engines
+        self.http = http  # shared client of the external sources (health reporting)
 
     @classmethod
     def from_settings(cls, settings: Settings, http: HttpClient | None = None) -> "ProbabilityEngine":
@@ -60,6 +61,7 @@ class ProbabilityEngine:
                 PoliticsEngine(book, kalshi, conflict_threshold=threshold),
                 ManualEngine(book, kalshi),
             ],
+            http,
         )
 
     def estimate(self, candidate: FavoriteCandidate, now: datetime) -> ProbabilityEstimate:

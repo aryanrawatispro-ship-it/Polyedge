@@ -11,6 +11,8 @@ import logging
 import random
 import threading
 import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -28,6 +30,15 @@ class DataUnavailable(Exception):
         super().__init__(f"DATA UNAVAILABLE [{source}]: {reason}")
         self.source = source
         self.reason = reason
+
+
+@dataclass
+class SourceHealth:
+    ok: int = 0
+    errors: int = 0
+    last_ok: datetime | None = None
+    last_error: str | None = None
+    last_error_at: datetime | None = None
 
 
 class RateLimiter:
@@ -70,6 +81,26 @@ class HttpClient:
         )
         self._limiter = RateLimiter(rate_limits or {"default": 5.0})
         self._max_retries = max_retries
+        self._health: dict[str, SourceHealth] = {}
+        self._health_lock = threading.Lock()
+
+    def _record(self, source: str, ok: bool, error: str | None = None) -> None:
+        now = datetime.now(UTC)
+        with self._health_lock:
+            health = self._health.setdefault(source, SourceHealth())
+            if ok:
+                health.ok += 1
+                health.last_ok = now
+            else:
+                health.errors += 1
+                health.last_error = error
+                health.last_error_at = now
+
+    def drain_health(self) -> dict[str, SourceHealth]:
+        """Per-source request outcomes since the last drain."""
+        with self._health_lock:
+            drained, self._health = self._health, {}
+        return drained
 
     def close(self) -> None:
         self._client.close()
@@ -81,10 +112,20 @@ class HttpClient:
         self.close()
 
     def get_json(self, url: str, params: dict[str, Any] | None = None, *, source: str | None = None) -> Any:
-        return self._request("GET", url, params=params, source=source)
+        return self._tracked("GET", url, params, None, source)
 
     def post_json(self, url: str, body: Any, *, source: str | None = None) -> Any:
-        return self._request("POST", url, json_body=body, source=source)
+        return self._tracked("POST", url, None, body, source)
+
+    def _tracked(self, method: str, url: str, params: Any, body: Any, source: str | None) -> Any:
+        name = source or urlparse(url).netloc
+        try:
+            result = self._request(method, url, params=params, json_body=body, source=name)
+        except DataUnavailable as exc:
+            self._record(name, False, exc.reason)
+            raise
+        self._record(name, True)
+        return result
 
     def _request(
         self,

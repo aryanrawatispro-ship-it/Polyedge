@@ -31,7 +31,9 @@ class Evaluator:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "Evaluator":
-        return cls(settings, ProbabilityEngine.from_settings(settings))
+        from .scoring import compute_favorite_edge_score
+
+        return cls(settings, ProbabilityEngine.from_settings(settings), compute_favorite_edge_score)
 
     def __call__(self, candidates: list[FavoriteCandidate], now: datetime) -> None:
         for candidate in candidates:

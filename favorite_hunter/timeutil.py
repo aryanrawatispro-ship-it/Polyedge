@@ -96,6 +96,11 @@ def iso(dt: datetime | None) -> str | None:
     return dt.astimezone(UTC).isoformat().replace("+00:00", "Z") if dt else None
 
 
+def short_utc(dt: datetime | None) -> str:
+    """Human-readable UTC timestamp, e.g. '2026-10-07 16:00 UTC'."""
+    return dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC") if dt else "unknown"
+
+
 def floor_minute(dt: datetime) -> datetime:
     return dt.replace(second=0, microsecond=0)
 
@@ -109,6 +114,7 @@ __all__ = [
     "hours_between",
     "humanize_hours",
     "iso",
+    "short_utc",
     "parse_dt",
     "time_bucket",
     "timedelta",

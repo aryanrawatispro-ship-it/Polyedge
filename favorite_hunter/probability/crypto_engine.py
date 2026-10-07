@@ -19,7 +19,7 @@ from ..categories import CRYPTO
 from ..http import DataUnavailable
 from ..market_scanner import FavoriteCandidate
 from ..sources.crypto import Asset, CryptoData, find_asset
-from ..timeutil import humanize_hours, iso
+from ..timeutil import humanize_hours, short_utc
 from .base import (
     DATA_LAG,
     NEAR_RESOLUTION_EDGE,
@@ -67,13 +67,13 @@ class CryptoSpec:
 
     def describe(self) -> str:
         if self.kind == "up_down":
-            return f"{self.asset.symbol} up/down over {iso(self.window_start)} -> {iso(self.settle_time)}"
+            return f"{self.asset.symbol} up/down over {short_utc(self.window_start)} -> {short_utc(self.settle_time)}"
         if self.kind == "range":
-            return f"{self.asset.symbol} between {self.strike:,.2f} and {self.strike_high:,.2f} at {iso(self.settle_time)}"
+            return f"{self.asset.symbol} between {self.strike:,.2f} and {self.strike_high:,.2f} at {short_utc(self.settle_time)}"
         if self.kind in ("touch_up", "touch_down"):
             verb = "reaches" if self.kind == "touch_up" else "dips to"
-            return f"{self.asset.symbol} {verb} {self.strike:,.2f} between {iso(self.window_start)} and {iso(self.settle_time)}"
-        return f"{self.asset.symbol} {self.kind} {self.strike:,.2f} at {iso(self.settle_time)}"
+            return f"{self.asset.symbol} {verb} {self.strike:,.2f} between {short_utc(self.window_start)} and {short_utc(self.settle_time)}"
+        return f"{self.asset.symbol} {self.kind} {self.strike:,.2f} at {short_utc(self.settle_time)}"
 
 
 def _outcome_index(outcomes: list[str], *labels: str) -> int | None:
@@ -267,6 +267,7 @@ class CryptoEngine:
             vols = self.data.realized_vol(spec.asset, now)
         except DataUnavailable as exc:
             return ProbabilityEstimate.unavailable(idx, ENGINE, f"volatility unavailable: {exc.reason}", method=method)
+        evidence.append(Evidence("Binance candles", "realised volatility " + ", ".join(f"{k} {v:.1%}" for k, v in vols.items()), dict(vols), None, now, quality=0.8))
         try:
             implied = self.data.implied_vol(spec.asset, now)
         except DataUnavailable as exc:
@@ -274,8 +275,7 @@ class CryptoEngine:
             calc.append(f"Implied vol DATA UNAVAILABLE ({exc.reason})")
         if implied:
             vols["deribit_dvol"] = implied
-            evidence.append(Evidence("Deribit DVOL", f"30d implied vol {implied:.1%}", implied, "https://www.deribit.com", now, quality=0.8))
-        evidence.append(Evidence("Binance candles", "realised vol " + ", ".join(f"{k} {v:.1%}" for k, v in vols.items()), vols, None, now, quality=0.8))
+            evidence.append(Evidence("Deribit DVOL", f"30-day implied volatility {implied:.1%}", implied, "https://www.deribit.com", now, quality=0.8))
         calc.append("Volatility scenarios (annualised): " + ", ".join(f"{k} {v:.1%}" for k, v in vols.items()))
 
         tau_hours = (spec.settle_time - now).total_seconds() / 3600.0
@@ -303,8 +303,8 @@ class CryptoEngine:
             except DataUnavailable as exc:
                 return ProbabilityEstimate.unavailable(idx, ENGINE, f"window opening price unavailable: {exc.reason}", method=method)
             strike = opening.open
-            evidence.append(Evidence("Binance 1m candle", f"window open {strike:,.4f} at {iso(spec.window_start)}", strike, None, spec.window_start, quality=0.9))
-            calc.append(f"Window opening price (Binance 1m open at {iso(spec.window_start)}): {strike:,.4f}; now {spot:,.4f} ({spot / strike - 1:+.3%})")
+            evidence.append(Evidence("Binance 1m candle", f"window open {strike:,.4f} at {short_utc(spec.window_start)}", strike, None, spec.window_start, quality=0.9))
+            calc.append(f"Window opening price (Binance 1m open at {short_utc(spec.window_start)}): {strike:,.4f}; now {spot:,.4f} ({spot / strike - 1:+.3%})")
             event_fn = lambda s, sd, nu: _p_above(s, strike, sd, nu)  # noqa: E731
         elif spec.kind in ("above", "below"):
             strike = spec.strike  # type: ignore[assignment]
@@ -324,8 +324,8 @@ class CryptoEngine:
                 period_high, period_low = self.data.period_extremes(spec.asset, spec.window_start, now)  # type: ignore[arg-type]
             except DataUnavailable as exc:
                 return ProbabilityEstimate.unavailable(idx, ENGINE, f"period high/low unavailable: {exc.reason}", method=method)
-            evidence.append(Evidence("Binance 1h candles", f"period high {period_high:,.4f}, low {period_low:,.4f} since {iso(spec.window_start)}", [period_high, period_low], None, now, quality=0.85))
-            calc.append(f"Barrier {strike:,.4f}; period high {period_high:,.4f}, low {period_low:,.4f} since {iso(spec.window_start)}")
+            evidence.append(Evidence("Binance 1h candles", f"period high {period_high:,.4f}, low {period_low:,.4f} since {short_utc(spec.window_start)}", [period_high, period_low], None, now, quality=0.85))
+            calc.append(f"Barrier {strike:,.4f}; period high {period_high:,.4f}, low {period_low:,.4f} since {short_utc(spec.window_start)}")
             settled = period_high >= strike if spec.kind == "touch_up" else period_low <= strike
             if settled:
                 opp_type = DATA_LAG
@@ -388,11 +388,11 @@ class CryptoEngine:
         elif spec.kind in ("touch_up", "touch_down"):
             direction = "up" if spec.kind == "touch_up" else "down"
             if side_is_event:
-                loss.append(f"{spec.asset.symbol} not moving {move:.2%} {direction} to {strike:,.2f} before {iso(spec.settle_time)}")
+                loss.append(f"{spec.asset.symbol} not moving {move:.2%} {direction} to {strike:,.2f} before {short_utc(spec.settle_time)}")
             else:
-                loss.append(f"{spec.asset.symbol} trading {move:.2%} {direction} to {strike:,.2f} at any moment before {iso(spec.settle_time)}")
+                loss.append(f"{spec.asset.symbol} trading {move:.2%} {direction} to {strike:,.2f} at any moment before {short_utc(spec.settle_time)}")
         else:
-            loss.append(f"A {move:.2%} move in {spec.asset.symbol} through {strike:,.2f} against the position before {iso(spec.settle_time)}")
+            loss.append(f"A {move:.2%} move in {spec.asset.symbol} through {strike:,.2f} against the position before {short_utc(spec.settle_time)}")
         loss.append("Wick or outage on the resolution exchange around settlement")
         risks.append(f"Resolution source: {spec.resolution_source}; other venues' prices can differ (basis)")
         if spec.resolution_source == "unknown":
