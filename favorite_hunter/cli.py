@@ -1,6 +1,9 @@
 """Command-line interface.
 
     favorite-hunter scan      one scan, print favorites in the price band
+    favorite-hunter run       continuous loop: scan, store history (and later phases)
+    favorite-hunter history   stored price history for a market or token
+    favorite-hunter db-stats  row counts and data-source health
     favorite-hunter verify    live checks against the Polymarket APIs
 """
 
@@ -139,6 +142,60 @@ def cmd_scan(settings: Settings, args: argparse.Namespace) -> int:
     return 0 if result.data_available else 2
 
 
+def cmd_run(settings: Settings, args: argparse.Namespace) -> int:
+    from .runner import Runner
+
+    print(PAPER_BANNER)
+    runner = Runner(settings)
+    runner.run_forever(interval=args.interval, cycles=args.cycles)
+    return 0
+
+
+def cmd_history(settings: Settings, args: argparse.Namespace) -> int:
+    from .database import Database
+
+    db = Database(settings.database_path)
+    tokens: list[tuple[str, str]] = []
+    market = db.get_market(args.id)
+    if market:
+        outcomes = json.loads(market["outcomes"] or "[]")
+        for outcome, token in zip(outcomes, json.loads(market["token_ids"] or "[]")):
+            tokens.append((token, outcome))
+        print(f"{market['question']}  (market {market['market_id']})")
+    else:
+        tokens.append((args.id, "token"))
+    for token, label in tokens:
+        rows = db.price_history(token, limit=args.limit)
+        print(f"\n{label} token {token}: {len(rows)} snapshots")
+        table = [
+            [r["ts"][:19], _fmt_price(r["best_bid"]), _fmt_price(r["best_ask"]), _fmt_price(r["spread"]),
+             _fmt_usd(r["ask_depth_usd"]), _fmt_price(r["entry_vwap"]), humanize_hours(r["hours_to_resolution"])]
+            for r in rows
+        ]
+        if table:
+            print(render_table(table, ["Time (UTC)", "Bid", "Ask", "Spread", "AskDepth", "VWAP", "TimeLeft"], {1, 2, 3, 4, 5}))
+    return 0
+
+
+def cmd_db_stats(settings: Settings, args: argparse.Namespace) -> int:
+    from .database import Database
+
+    db = Database(settings.database_path)
+    print(f"database: {settings.database_path}")
+    for table, count in db.stats().items():
+        print(f"  {table:22s} {count:>10,}")
+    print("\ndata sources:")
+    for row in db.source_status():
+        print(f"  {row['source']:14s} ok={row['ok_count']} errors={row['error_count']} last_ok={row['last_ok']} last_error={row['last_error']}")
+    scans = db.recent_scans(5)
+    if scans:
+        print("\nrecent scans:")
+        for scan in scans:
+            status = "ok" if scan["data_available"] else f"DATA UNAVAILABLE {scan['errors']}"
+            print(f"  #{scan['scan_id']} {scan['started_at']} markets={scan['markets_fetched']} favorites={scan['candidates']} {status}")
+    return 0
+
+
 def cmd_verify(settings: Settings, args: argparse.Namespace) -> int:
     from .verify import run_verification
 
@@ -156,6 +213,19 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--sort", choices=["ev", "time", "price", "depth"], default="ev")
     scan.add_argument("--json", action="store_true")
     scan.set_defaults(func=cmd_scan)
+
+    run = sub.add_parser("run", help="continuous scan loop with history storage")
+    run.add_argument("--interval", type=float, default=None, help="seconds between scans")
+    run.add_argument("--cycles", type=int, default=None, help="stop after N cycles")
+    run.set_defaults(func=cmd_run)
+
+    history = sub.add_parser("history", help="stored price history for a market id or token id")
+    history.add_argument("id")
+    history.add_argument("--limit", type=int, default=50)
+    history.set_defaults(func=cmd_history)
+
+    stats = sub.add_parser("db-stats", help="database row counts and data-source health")
+    stats.set_defaults(func=cmd_db_stats)
 
     verify = sub.add_parser("verify", help="check live Polymarket data and the calculations")
     verify.add_argument("--phase", type=int, default=1)

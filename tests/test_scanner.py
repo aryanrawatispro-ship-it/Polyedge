@@ -3,34 +3,11 @@ from datetime import timedelta
 import pytest
 
 from favorite_hunter.config import Settings
-from favorite_hunter.http import DataUnavailable
 from favorite_hunter.market_scanner import MarketScanner, estimate_resolution_time
-from favorite_hunter.models import FeeSchedule, parse_book, parse_market
+from favorite_hunter.models import FeeSchedule, parse_market
 
 from .factories import NOW, clob_book, gamma_market, mirrored_no_book
-
-
-class FakeClient:
-    def __init__(self, markets, books, fee=None, fail=False):
-        self.markets = markets
-        self.books = books
-        self.fee = fee
-        self.fail = fail
-        self.fee_calls = 0
-        self.requested_tokens = []
-
-    def iter_markets(self, **kwargs):
-        if self.fail:
-            raise DataUnavailable("gamma", "blocked by network proxy (403 Forbidden)")
-        yield from self.markets
-
-    def get_books(self, token_ids, batch_size=50):
-        self.requested_tokens = list(token_ids)
-        return {t: parse_book(self.books[t]) for t in token_ids if t in self.books}
-
-    def get_fee_schedule(self, condition_id):
-        self.fee_calls += 1
-        return self.fee
+from .fakes import FakeClient
 
 
 def make_settings(**scanner):
