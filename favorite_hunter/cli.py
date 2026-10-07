@@ -83,13 +83,15 @@ def candidate_row(c: FavoriteCandidate) -> list[str]:
         "-" if roi is None else f"{roi * 100:+.1f}%",
         humanize_hours(c.hours_to_resolution()),
         _fmt_usd(c.market.liquidity),
+        "-" if c.confidence is None or not getattr(c.confidence, "value", 0) else f"{c.confidence.value:.0f}",
         c.category,
+        c.status,
     ]
 
 
 CANDIDATE_HEADERS = [
     "Market", "Side", "Price", "BestAsk", "Spread", "Depth2c", "Fee/sh", "BreakEven",
-    "EstProb", "Edge", "ExpROI", "TimeLeft", "Liquidity", "Category",
+    "EstProb", "Edge", "ExpROI", "TimeLeft", "Liquidity", "Conf", "Category", "Status",
 ]
 
 
@@ -110,7 +112,7 @@ def print_scan(result: ScanResult, *, limit: int, sort: str) -> None:
     candidates = sort_candidates(result.candidates, sort)
     rows = [candidate_row(c) for c in candidates[:limit]]
     print()
-    print(render_table(rows, CANDIDATE_HEADERS, align_right={2, 3, 4, 5, 6, 7, 9, 10, 12}))
+    print(render_table(rows, CANDIDATE_HEADERS, align_right={2, 3, 4, 5, 6, 7, 9, 10, 12, 13}))
     if any(not c.fee.known for c in candidates):
         print("\n* fee schedule unavailable: worst-case taker fee assumed")
     print(
@@ -138,6 +140,12 @@ def cmd_scan(settings: Settings, args: argparse.Namespace) -> int:
     client = PolymarketClient.from_settings(settings)
     scanner = MarketScanner(client, settings)
     result = scanner.scan()
+    if result.data_available and not args.no_model:
+        from .evaluator import Evaluator
+
+        Evaluator.from_settings(settings)(result.candidates, result.started_at)
+    if args.status:
+        result.candidates = [c for c in result.candidates if c.status == args.status]
     if args.json:
         payload = {"summary": result.summary(), "candidates": [c.to_dict() for c in result.candidates]}
         print(json.dumps(payload, indent=2, default=str))
@@ -149,8 +157,10 @@ def cmd_scan(settings: Settings, args: argparse.Namespace) -> int:
 def cmd_run(settings: Settings, args: argparse.Namespace) -> int:
     from .runner import Runner
 
+    from .evaluator import Evaluator
+
     print(PAPER_BANNER)
-    runner = Runner(settings)
+    runner = Runner(settings, evaluator=Evaluator.from_settings(settings))
     runner.run_forever(interval=args.interval, cycles=args.cycles)
     return 0
 
@@ -327,6 +337,8 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--limit", type=int, default=50)
     scan.add_argument("--sort", choices=["ev", "time", "price", "depth"], default="ev")
     scan.add_argument("--json", action="store_true")
+    scan.add_argument("--no-model", action="store_true", help="skip probability estimation (prices only)")
+    scan.add_argument("--status", default=None, help="only show this status, e.g. TRADE")
     scan.set_defaults(func=cmd_scan)
 
     run = sub.add_parser("run", help="continuous scan loop with history storage")

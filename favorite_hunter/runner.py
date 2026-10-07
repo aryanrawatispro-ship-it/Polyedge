@@ -66,6 +66,7 @@ class Runner:
         db: Database | None = None,
         evaluator: Evaluator | None = None,
         on_cycle: Callable[["CycleReport"], None] | None = None,
+        clock: Callable[[], datetime] = utcnow,
     ):
         self.settings = settings
         self.client = client or PolymarketClient.from_settings(settings)
@@ -75,10 +76,11 @@ class Runner:
         self.recorder = OpportunityRecorder(self.db)
         self.evaluator = evaluator
         self.on_cycle = on_cycle
+        self.clock = clock
         self._last_settle: datetime | None = None
 
     def run_once(self) -> CycleReport:
-        started = utcnow()
+        started = self.clock()
         scan_id = self.db.start_scan(started)
         result = self.scanner.scan(now=started)
         report = CycleReport(scan_id=scan_id, started_at=started, scan=result)

@@ -51,7 +51,7 @@ def test_runner_persists_scan_markets_and_snapshots():
     yes = clob_book("11", bids=[(0.89, 500)], asks=[(0.90, 400)])
     client = FakeClient([market], {"11": yes, "12": mirrored_no_book("12", yes)})
     db = make_db()
-    runner = Runner(Settings(), client=client, db=db)
+    runner = Runner(Settings(), client=client, db=db, clock=lambda: NOW)
     report = runner.run_once()
     summary = report.summary()
     assert summary["favorites_in_band"] == 1
@@ -65,7 +65,7 @@ def test_runner_persists_scan_markets_and_snapshots():
 
 def test_runner_records_data_unavailable():
     db = make_db()
-    runner = Runner(Settings(), client=FakeClient([], {}, fail=True), db=db)
+    runner = Runner(Settings(), client=FakeClient([], {}, fail=True), db=db, clock=lambda: NOW)
     report = runner.run_once()
     assert not report.scan.data_available
     scan = db.recent_scans(1)[0]

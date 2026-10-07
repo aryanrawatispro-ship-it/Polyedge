@@ -10,3 +10,4 @@ data/*
 !data/.gitkeep
 config.yaml
 .env
+manual_evidence.yaml

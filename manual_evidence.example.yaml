@@ -1,0 +1,40 @@
+# Copy to manual_evidence.yaml. Every entry needs `match`, `source` and `as_of`;
+# entries past `expires` are ignored. The bot never invents these values: if a
+# market has no entry (and no automatic source), it shows DATA UNAVAILABLE.
+#
+# match keys: market_id | condition_id | slug | question_contains
+
+entries:
+  # 1. A poll average / election-model / reputable-reporting probability
+  - match: {market_id: "123456"}
+    outcome: "Yes"                 # outcome label the probability refers to
+    probability: 0.96
+    uncertainty: 0.02              # 1-sigma uncertainty of the probability
+    source: "Example forecast model"
+    url: "https://example.org/forecast"
+    as_of: "2026-10-07T12:00:00Z"
+    expires: "2026-10-08T12:00:00Z"
+    type: POLLING_EDGE             # opportunity type label
+    quality: 0.7                   # 0-1 source reliability
+    note: "Model forecast 96% for the incumbent"
+
+  # 2. Live vote count -> vote-count model
+  - match: {question_contains: "Governor"}
+    vote_count:
+      leader_outcome: "Yes"        # outcome that wins if the current leader wins
+      leader_votes: 1250000
+      trailer_votes: 1100000
+      pct_reporting: 0.88          # share of the expected total vote counted
+      remaining_leader_share: 0.47 # optional; default = counted share (flagged)
+      remaining_share_sd: 0.04     # optional; default 0.05 (flagged)
+    source: "Official state results page"
+    url: "https://example.org/results"
+    as_of: "2026-11-03T23:10:00Z"
+    expires: "2026-11-04T06:00:00Z"
+
+  # 3. Cross-market comparison with a Kalshi market
+  - match: {market_id: "789012"}
+    kalshi_ticker: "KXEXAMPLE-26"
+    kalshi_yes_outcome: "Yes"      # Polymarket outcome matching Kalshi YES
+    source: "Kalshi"
+    as_of: "2026-10-01T00:00:00Z"

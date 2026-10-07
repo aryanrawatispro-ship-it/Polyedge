@@ -194,7 +194,7 @@ def test_runner_records_baselines_and_settles():
     cid = market["conditionId"]
     client = FakeClient([market], {"11": yes, "12": mirrored_no_book("12", yes)})
     db = Database(":memory:")
-    runner = Runner(Settings(), client=client, db=db)
+    runner = Runner(Settings(), client=client, db=db, clock=lambda: NOW)
     report = runner.run_once()
     assert report.baselines_recorded == 1 and report.trades_opened == []
     client.closed_markets[cid] = resolved(cid, ["1", "0"])
